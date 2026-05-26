@@ -1,0 +1,7 @@
+name = "pan-worker"
+main = "src/index.js"
+compatibility_date = "2024-05-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "pan-storage"

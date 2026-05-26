@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>毛希嘉 - 个人私有云盘</title>
+    <meta name="description" content="毛希嘉的个人私有云网盘。完全不限速，全天候安全存储课件与实验数据。">
+    <!-- Google Fonts Outfit & Noto Sans SC -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800;900&family=Noto+Sans+SC:wght@300;400;700;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- Background Components -->
+    <div class="bg-grid-layer"></div>
+    <canvas id="star-canvas"></canvas>
+    
+    <!-- Toasts Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Login Panel Screen -->
+    <section id="login-screen">
+        <div class="login-card">
+            <div class="login-header">
+                <h2>PORTAL PAN OS</h2>
+                <p>极客私有网盘 · 安全登录终端</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">管理账号</label>
+                    <input type="text" id="username" class="form-input" placeholder="输入账号" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">验证密码</label>
+                    <input type="password" id="password" class="form-input" placeholder="输入密码" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="login-btn">解密验证</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Main Workspace Application -->
+    <div id="app-workspace" style="display: none;">
+        <!-- Top Nav Bar -->
+        <header class="navbar">
+            <div class="nav-brand">
+                MAO_PAN<span>_OS</span>
+            </div>
+            <div>
+                <button class="nav-btn btn-logout" id="logout-btn">退出网盘</button>
+            </div>
+        </header>
+
+        <!-- Container -->
+        <main class="main-wrapper">
+            <!-- Upload Panel Card -->
+            <section class="glass-card">
+                <div class="upload-zone" id="upload-dropzone">
+                    <div class="upload-icon">📤</div>
+                    <div class="upload-title">点击或拖拽文件到此处上传</div>
+                    <div class="upload-sub">安全直达私有云端 · 支持最大 100MB 任意类型文件</div>
+                    <input type="file" id="file-input">
+                </div>
+
+                <!-- Progress Bars -->
+                <div class="progress-container" id="upload-progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="upload-progress-fill"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="upload-status-text">准备上传...</span>
+                        <span id="upload-percent-text">0%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- File List Card Panel -->
+            <section class="glass-card">
+                <div class="file-list-header">
+                    <h2 class="file-list-title">云端文件库 (<span id="file-count">0</span>)</h2>
+                    <button class="nav-btn" onclick="fetchFilesList()">🔄 刷新列表</button>
+                </div>
+                <div class="files-container" id="files-container-list">
+                    <div style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                        正在读取文件目录...
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-left">
+                <span>&copy; 2026 毛希嘉 (Mao). All Rights Reserved.</span>
+            </div>
+            <div class="footer-right">
+                <span>PAN_STATUS: <b style="color: var(--neon-green)">ENCRYPTED</b></span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Main Controller JS -->
+    <script src="js/main.js"></script>
+</body>
+</html>

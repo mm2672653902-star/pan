@@ -79,9 +79,18 @@
 
             <!-- File List Card Panel -->
             <section class="glass-card">
-                <div class="file-list-header">
-                    <h2 class="file-list-title">云端文件库 (<span id="file-count">0</span>)</h2>
-                    <button class="nav-btn" onclick="fetchFilesList()">🔄 刷新列表</button>
+                <div class="file-list-header" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <h2 class="file-list-title">云端文件库 (<span id="file-count">0</span>)</h2>
+                        <div>
+                            <button class="nav-btn" onclick="promptNewFolder()" style="border-color: var(--neon-green); color: var(--neon-green); margin-right: 8px;">➕ 新建文件夹</button>
+                            <button class="nav-btn" onclick="fetchFilesList()">🔄 刷新</button>
+                        </div>
+                    </div>
+                    <!-- Breadcrumbs navigation -->
+                    <div id="breadcrumb-container" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); padding-top: 4px;">
+                        <!-- Will be dynamically populated by JS -->
+                    </div>
                 </div>
                 <div class="files-container" id="files-container-list">
                     <div style="text-align: center; color: var(--text-muted); padding: 40px 0;">

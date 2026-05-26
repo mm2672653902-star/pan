@@ -60,7 +60,9 @@ const BRANCH = "main";
 
 // State variables
 let gitHubToken = "";
-let cachedFilesList = []; // Holds { name, path, sha, size, type }
+let currentPath = ""; // Track current folder path
+let cachedFilesList = []; // Holds { name, path, sha, size, type } (files in current folder)
+let cachedFoldersList = []; // Holds folders in current folder
 let isStorageRepoPrivate = true; // Cached visibility of storage repo
 
 // Convert Hex string to Uint8Array
@@ -261,41 +263,167 @@ async function fetchFilesList() {
     container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">正在读取文件列表...</div>';
     
     try {
-        // Fetch contents of the root directory
-        const files = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/?ref=${BRANCH}`);
+        // URL encode the path segments correctly
+        const encodedPath = currentPath ? currentPath.split('/').map(encodeURIComponent).join('/') : "";
+        const endpoint = `/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}?ref=${BRANCH}`;
+        const items = await githubRequest(endpoint);
         
-        // Filter out folders/hidden files
-        cachedFilesList = files.filter(f => f.type === 'file' && !f.name.startsWith('.'));
+        // Separate folders and files, filtering out .gitkeep files
+        cachedFoldersList = items.filter(f => f.type === 'dir');
+        cachedFilesList = items.filter(f => f.type === 'file' && f.name !== '.gitkeep');
+        
+        // Update the file count display
         document.getElementById('file-count').innerText = cachedFilesList.length;
         
         renderFilesList();
     } catch (err) {
         console.error(err);
+        if (err.message.includes("Not Found") && currentPath !== "") {
+            showToast("当前文件夹已不存在，已返回根目录", "error");
+            currentPath = "";
+            fetchFilesList();
+            return;
+        }
+        
         // If the repository is empty (e.g. newly created without auto_init)
         if (err.message.includes("this repository is empty")) {
+            cachedFoldersList = [];
             cachedFilesList = [];
             document.getElementById('file-count').innerText = "0";
-            container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">网盘中暂无文件。开始上传您的课件吧！</div>';
+            renderFilesList();
         } else {
             container.innerHTML = '<div style="text-align: center; color: var(--neon-red); padding: 40px 0;">加载列表失败，请点击刷新重试</div>';
         }
     }
 }
 
+// Render Go Up Helper
+function renderGoUpItem(container) {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.style.cursor = 'pointer';
+    item.addEventListener('click', () => {
+        const parts = currentPath.split('/');
+        parts.pop();
+        currentPath = parts.join('/');
+        fetchFilesList();
+    });
+    item.innerHTML = `
+        <div class="file-info">
+            <div class="file-icon">🔙</div>
+            <div class="file-meta">
+                <div class="file-name">.. (返回上级)</div>
+                <div class="file-specs">
+                    <span>返回上层目录</span>
+                </div>
+            </div>
+        </div>
+        <div class="file-actions"></div>
+    `;
+    container.appendChild(item);
+}
+
 // Render UI List
 function renderFilesList() {
     const container = document.getElementById('files-container-list');
     
-    if (cachedFilesList.length === 0) {
-        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">网盘中暂无文件。开始上传您的课件吧！</div>';
+    // Render Breadcrumbs
+    const breadcrumbContainer = document.getElementById('breadcrumb-container');
+    if (breadcrumbContainer) {
+        breadcrumbContainer.innerHTML = '';
+        
+        const rootSpan = document.createElement('span');
+        rootSpan.innerHTML = '📁 根目录';
+        rootSpan.style.cursor = 'pointer';
+        rootSpan.style.color = currentPath === "" ? 'var(--neon-cyan)' : 'var(--text-silver)';
+        rootSpan.addEventListener('click', () => {
+            if (currentPath !== "") {
+                currentPath = "";
+                fetchFilesList();
+            }
+        });
+        breadcrumbContainer.appendChild(rootSpan);
+        
+        if (currentPath) {
+            const parts = currentPath.split('/');
+            let accum = "";
+            parts.forEach((part, index) => {
+                const sep = document.createElement('span');
+                sep.innerText = ' / ';
+                sep.style.color = 'var(--text-muted)';
+                breadcrumbContainer.appendChild(sep);
+                
+                accum = accum ? `${accum}/${part}` : part;
+                const thisPath = accum;
+                
+                const span = document.createElement('span');
+                span.innerText = part;
+                span.style.cursor = 'pointer';
+                span.style.color = index === parts.length - 1 ? 'var(--neon-cyan)' : 'var(--text-silver)';
+                span.addEventListener('click', () => {
+                    if (currentPath !== thisPath) {
+                         currentPath = thisPath;
+                         fetchFilesList();
+                    }
+                });
+                breadcrumbContainer.appendChild(span);
+            });
+        }
+    }
+    
+    // If folder is empty
+    if (cachedFoldersList.length === 0 && cachedFilesList.length === 0) {
+        container.innerHTML = '';
+        if (currentPath !== "") {
+            renderGoUpItem(container);
+        }
+        
+        const emptyMsg = document.createElement('div');
+        emptyMsg.style.textAlign = 'center';
+        emptyMsg.style.color = 'var(--text-muted)';
+        emptyMsg.style.padding = '40px 0';
+        emptyMsg.innerText = '网盘中暂无文件或文件夹。开始上传或新建文件夹吧！';
+        container.appendChild(emptyMsg);
         return;
     }
     
     container.innerHTML = '';
+    
+    // Prepend Go Up item if in subfolder
+    if (currentPath !== "") {
+        renderGoUpItem(container);
+    }
+    
+    // Render Folders
+    cachedFoldersList.forEach(folder => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `
+            <div class="file-info" style="cursor: pointer;">
+                <div class="file-icon">📁</div>
+                <div class="file-meta">
+                    <div class="file-name" title="${folder.name}">${folder.name}</div>
+                    <div class="file-specs">
+                        <span>文件夹</span>
+                    </div>
+                </div>
+            </div>
+            <div class="file-actions">
+                <button class="action-btn" onclick="renameFolder('${folder.path.replace(/'/g, "\\'")}', '${folder.name.replace(/'/g, "\\'")}')">重命名</button>
+                <button class="action-btn btn-delete" onclick="deleteFolder('${folder.path.replace(/'/g, "\\'")}', '${folder.name.replace(/'/g, "\\'")}')">删除</button>
+            </div>
+        `;
+        item.querySelector('.file-info').addEventListener('click', () => {
+            currentPath = folder.path;
+            fetchFilesList();
+        });
+        container.appendChild(item);
+    });
+    
+    // Render Files
     cachedFilesList.forEach(file => {
         const item = document.createElement('div');
         item.className = 'file-item';
-        
         const icon = getFileIcon(file.name);
         const sizeStr = formatBytes(file.size);
 
@@ -310,9 +438,9 @@ function renderFilesList() {
                 </div>
             </div>
             <div class="file-actions">
-                <button class="action-btn" onclick="downloadFile('${file.name}')">下载</button>
-                <button class="action-btn" onclick="shareFile('${file.name}')">复制分享</button>
-                <button class="action-btn btn-delete" onclick="deleteFile('${file.name}', '${file.sha}')">删除</button>
+                <button class="action-btn" onclick="downloadFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')">下载</button>
+                <button class="action-btn" onclick="shareFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')">复制分享</button>
+                <button class="action-btn btn-delete" onclick="deleteFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', '${file.sha}')">删除</button>
             </div>
         `;
         container.appendChild(item);
@@ -320,12 +448,13 @@ function renderFilesList() {
 }
 
 // Download file via Raw Content stream
-async function downloadFile(filename) {
-    showToast(`正在从安全云端读取 ${filename}...`, "success");
+async function downloadFile(filePath, fileName) {
+    showToast(`正在从安全云端读取 ${fileName}...`, "success");
     
     try {
+        const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
         // Fetch raw file blob using auth header
-        const blob = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodeURIComponent(filename)}?ref=${BRANCH}`, {
+        const blob = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}?ref=${BRANCH}`, {
             method: 'GET'
         }, true);
         
@@ -333,7 +462,7 @@ async function downloadFile(filename) {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -346,29 +475,31 @@ async function downloadFile(filename) {
 }
 
 // Copy sharing link
-function shareFile(filename) {
+function shareFile(filePath, fileName) {
     if (isStorageRepoPrivate) {
         alert("【提示】\n您的存储仓库目前是“私有（Private）”状态。由于 GitHub 安全限制，私有仓库内的分享链接无法免登直接下载。\n\n【解决方法】\n如果您想开启公开分享功能：\n1. 打开您的 GitHub 仓库 pan-data 设置 (Settings)；\n2. 滚动到页面底部将 Visibility 更改为 Public (公开)；\n3. 刷新网盘，即可一键复制永久高速下载链接！");
         return;
     }
 
     // If repository is public, copy optimized jsDelivr CDN download link (extremely fast in China and works without VPN!)
-    const cdnUrl = `https://fastly.jsdelivr.net/gh/${REPO_OWNER}/${STORAGE_REPO}@${BRANCH}/${encodeURIComponent(filename)}`;
+    const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+    const cdnUrl = `https://fastly.jsdelivr.net/gh/${REPO_OWNER}/${STORAGE_REPO}@${BRANCH}/${encodedPath}`;
     navigator.clipboard.writeText(cdnUrl);
     showToast("国内直连下载链接已复制！任何人可高速免密下载", "success");
 }
 
 // Delete file
-async function deleteFile(filename, sha) {
-    if (!confirm(`警告：确定要彻底删除文件 ${filename} 吗？\n删除后不可恢复。`)) return;
+async function deleteFile(filePath, fileName, sha) {
+    if (!confirm(`警告：确定要彻底删除文件 ${fileName} 吗？\n删除后不可恢复。`)) return;
 
     showToast("正在向云端提交删除指令...", "success");
     
     try {
-        await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodeURIComponent(filename)}`, {
+        const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+        await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}`, {
             method: 'DELETE',
             body: JSON.stringify({
-                message: `delete file ${filename}`,
+                message: `delete file ${fileName}`,
                 sha: sha,
                 branch: BRANCH
             })
@@ -378,6 +509,253 @@ async function deleteFile(filename, sha) {
     } catch (err) {
         console.error(err);
         showToast("删除文件失败，请刷新重试", "error");
+    }
+}
+
+// Folder Creation
+async function promptNewFolder() {
+    const name = prompt("请输入新建文件夹的名称:");
+    if (!name) return;
+    const cleanName = name.trim();
+    if (!cleanName) {
+        showToast("文件夹名称不能为空", "error");
+        return;
+    }
+    if (cleanName.includes('/') || cleanName.includes('\\')) {
+        showToast("文件夹名称不能包含斜杠 / 或 \\", "error");
+        return;
+    }
+    if (cleanName === "." || cleanName === "..") {
+        showToast("文件夹名称非法", "error");
+        return;
+    }
+    
+    const exists = cachedFoldersList.some(f => f.name.toLowerCase() === cleanName.toLowerCase()) ||
+                   cachedFilesList.some(f => f.name.toLowerCase() === cleanName.toLowerCase());
+    if (exists) {
+        showToast("当前目录下已存在同名文件夹或文件", "error");
+        return;
+    }
+    
+    showToast("正在创建文件夹...", "success");
+    try {
+        const folderPath = currentPath ? `${currentPath}/${cleanName}` : cleanName;
+        const gitkeepPath = `${folderPath}/.gitkeep`;
+        const encodedPath = gitkeepPath.split('/').map(encodeURIComponent).join('/');
+        
+        await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                message: `create folder ${cleanName}`,
+                content: "",
+                branch: BRANCH
+            })
+        });
+        
+        showToast("文件夹创建成功！", "success");
+        fetchFilesList();
+    } catch (err) {
+        console.error(err);
+        showToast("创建文件夹失败，请刷新重试", "error");
+    }
+}
+
+// Rename Folder (Atomic Recursive)
+async function renameFolder(folderPath, folderName) {
+    const newName = prompt(`请输入文件夹 "${folderName}" 的新名称:`, folderName);
+    if (!newName) return;
+    const cleanNewName = newName.trim();
+    if (!cleanNewName || cleanNewName === folderName) return;
+    
+    if (cleanNewName.includes('/') || cleanNewName.includes('\\')) {
+        showToast("文件夹名称不能包含斜杠 / 或 \\", "error");
+        return;
+    }
+    
+    // Check local duplicates
+    const exists = cachedFoldersList.some(f => f.name.toLowerCase() === cleanNewName.toLowerCase()) ||
+                   cachedFilesList.some(f => f.name.toLowerCase() === cleanNewName.toLowerCase());
+    if (exists) {
+        showToast("当前目录下已存在同名文件夹或文件", "error");
+        return;
+    }
+    
+    showToast("正在重命名文件夹...", "success");
+    
+    try {
+        // Step 1: Get the current commit SHA of the branch
+        const refData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/refs/heads/${BRANCH}`);
+        const commitSha = refData.object.sha;
+        
+        // Step 2: Get the tree of that commit recursively
+        const treeData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/trees/${commitSha}?recursive=true`);
+        
+        // Step 3: Determine the parent path and the new folder path
+        const parentPathParts = folderPath.split('/');
+        parentPathParts.pop();
+        const parentPath = parentPathParts.join('/');
+        const newFolderPath = parentPath ? `${parentPath}/${cleanNewName}` : cleanNewName;
+        
+        const treeUpdates = [];
+        let matchedCount = 0;
+        
+        treeData.tree.forEach(item => {
+            if (item.type === 'blob' && (item.path === folderPath || item.path.startsWith(folderPath + '/'))) {
+                matchedCount++;
+                // Delete old path
+                treeUpdates.push({
+                    path: item.path,
+                    mode: item.mode,
+                    type: 'blob',
+                    sha: null
+                });
+                // Add new path
+                const relativePath = item.path.substring(folderPath.length);
+                const newPath = newFolderPath + relativePath;
+                treeUpdates.push({
+                    path: newPath,
+                    mode: item.mode,
+                    type: 'blob',
+                    sha: item.sha
+                });
+            }
+        });
+        
+        if (matchedCount === 0) {
+            // Fallback: If for some reason there are no files inside, write new .gitkeep
+            const encodedPath = `${newFolderPath}/.gitkeep`.split('/').map(encodeURIComponent).join('/');
+            await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    message: `rename empty folder to ${cleanNewName}`,
+                    content: "",
+                    branch: BRANCH
+                })
+            });
+            showToast("文件夹重命名成功！", "success");
+            fetchFilesList();
+            return;
+        }
+        
+        // Step 4: Create new tree
+        const newTreeData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/trees`, {
+            method: 'POST',
+            body: JSON.stringify({
+                base_tree: commitSha,
+                tree: treeUpdates
+            })
+        });
+        
+        // Step 5: Create new commit
+        const newCommitData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/commits`, {
+            method: 'POST',
+            body: JSON.stringify({
+                message: `rename folder ${folderName} to ${cleanNewName}`,
+                tree: newTreeData.sha,
+                parents: [commitSha]
+            })
+        });
+        
+        // Step 6: Update branch ref
+        await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/refs/heads/${BRANCH}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                sha: newCommitData.sha,
+                force: false
+            })
+        });
+        
+        // Update currentPath if it was inside the renamed folder
+        if (currentPath === folderPath) {
+            currentPath = newFolderPath;
+        } else if (currentPath.startsWith(folderPath + '/')) {
+            currentPath = newFolderPath + currentPath.substring(folderPath.length);
+        }
+        
+        showToast("文件夹重命名成功！", "success");
+        fetchFilesList();
+    } catch (err) {
+        console.error(err);
+        showToast("重命名文件夹失败，请刷新重试", "error");
+    }
+}
+
+// Delete Folder (Atomic Recursive)
+async function deleteFolder(folderPath, folderName) {
+    if (!confirm(`警告：确定要彻底删除文件夹 "${folderName}" 及其包含的所有文件吗？\n此操作不可恢复！`)) return;
+    
+    showToast("正在删除文件夹...", "success");
+    
+    try {
+        // Step 1: Get the current commit SHA of the branch
+        const refData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/refs/heads/${BRANCH}`);
+        const commitSha = refData.object.sha;
+        
+        // Step 2: Get the tree of that commit recursively
+        const treeData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/trees/${commitSha}?recursive=true`);
+        
+        const treeUpdates = [];
+        let matchedCount = 0;
+        
+        treeData.tree.forEach(item => {
+            if (item.type === 'blob' && (item.path === folderPath || item.path.startsWith(folderPath + '/'))) {
+                matchedCount++;
+                // Delete path
+                treeUpdates.push({
+                    path: item.path,
+                    mode: item.mode,
+                    type: 'blob',
+                    sha: null
+                });
+            }
+        });
+        
+        if (matchedCount === 0) {
+            showToast("文件夹为空，无需删除", "success");
+            fetchFilesList();
+            return;
+        }
+        
+        // Step 3: Create new tree
+        const newTreeData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/trees`, {
+            method: 'POST',
+            body: JSON.stringify({
+                base_tree: commitSha,
+                tree: treeUpdates
+            })
+        });
+        
+        // Step 4: Create new commit
+        const newCommitData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/commits`, {
+            method: 'POST',
+            body: JSON.stringify({
+                message: `delete folder ${folderName}`,
+                tree: newTreeData.sha,
+                parents: [commitSha]
+            })
+        });
+        
+        // Step 5: Update branch ref
+        await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/refs/heads/${BRANCH}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                sha: newCommitData.sha,
+                force: false
+            })
+        });
+        
+        // Reset currentPath if it was inside the deleted folder
+        if (currentPath === folderPath || currentPath.startsWith(folderPath + '/')) {
+            const parts = folderPath.split('/');
+            parts.pop();
+            currentPath = parts.join('/');
+        }
+        
+        showToast("文件夹删除成功！", "success");
+        fetchFilesList();
+    } catch (err) {
+        console.error(err);
+        showToast("删除文件夹失败，请刷新重试", "error");
     }
 }
 
@@ -451,7 +829,7 @@ function handleFilesUpload(files) {
     
     const reader = new FileReader();
     
-    // Check if the file already exists to obtain its SHA
+    // Check if the file already exists in the current folder to obtain its SHA
     const existingFile = cachedFilesList.find(f => f.name === file.name);
     const existingSha = existingFile ? existingFile.sha : null;
     
@@ -474,8 +852,11 @@ function handleFilesUpload(files) {
         }
         
         try {
+            const filePath = currentPath ? `${currentPath}/${file.name}` : file.name;
+            const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+            
             // Push via GitHub Contents API
-            await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodeURIComponent(file.name)}`, {
+            await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}`, {
                 method: 'PUT',
                 body: JSON.stringify(payload)
             });

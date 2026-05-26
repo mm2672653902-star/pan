@@ -352,10 +352,10 @@ function shareFile(filename) {
         return;
     }
 
-    // If repository is public, copy direct raw download link
-    const rawUrl = `https://raw.githubusercontent.com/${REPO_OWNER}/${STORAGE_REPO}/${BRANCH}/${encodeURIComponent(filename)}`;
-    navigator.clipboard.writeText(rawUrl);
-    showToast("公开下载链接已复制至剪贴板！任何人可高速免密下载", "success");
+    // If repository is public, copy optimized jsDelivr CDN download link (extremely fast in China and works without VPN!)
+    const cdnUrl = `https://fastly.jsdelivr.net/gh/${REPO_OWNER}/${STORAGE_REPO}@${BRANCH}/${encodeURIComponent(filename)}`;
+    navigator.clipboard.writeText(cdnUrl);
+    showToast("国内直连下载链接已复制！任何人可高速免密下载", "success");
 }
 
 // Delete file

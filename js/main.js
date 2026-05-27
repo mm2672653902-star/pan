@@ -1028,6 +1028,44 @@ async function locateFile(filePath) {
     fetchFilesList();
 }
 
+// 在线预览辅助：获取 MIME 类型
+function getMimeType(ext) {
+    const mimeMap = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'svg': 'image/svg+xml',
+        'pdf': 'application/pdf',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'ogg': 'audio/ogg',
+        'mp4': 'video/mp4',
+        'webm': 'video/webm',
+        'mkv': 'video/x-matroska',
+        'avi': 'video/x-msvideo',
+        'txt': 'text/plain;charset=utf-8',
+        'md': 'text/markdown;charset=utf-8',
+        'js': 'application/javascript;charset=utf-8',
+        'css': 'text/css;charset=utf-8',
+        'html': 'text/html;charset=utf-8',
+        'py': 'text/x-python;charset=utf-8',
+        'json': 'application/json;charset=utf-8',
+        'c': 'text/x-c;charset=utf-8',
+        'cpp': 'text/x-c++;charset=utf-8',
+        'h': 'text/x-c;charset=utf-8',
+        'java': 'text/x-java-source;charset=utf-8',
+        'go': 'text/x-go;charset=utf-8',
+        'sh': 'application/x-sh;charset=utf-8',
+        'yaml': 'text/yaml;charset=utf-8',
+        'yml': 'text/yaml;charset=utf-8',
+        'ini': 'text/plain;charset=utf-8',
+        'sql': 'text/x-sql;charset=utf-8'
+    };
+    return mimeMap[ext] || 'application/octet-stream';
+}
+
 // 在线预览主入口
 async function previewFile(filePath, fileName) {
     showToast(`正在从安全云端加载预览 ${fileName}...`, "success");
@@ -1058,9 +1096,13 @@ async function previewFile(filePath, fileName) {
         modal.style.display = 'flex';
         
         if (isImage || isPdf || isAudio || isVideo || isText) {
-            const blob = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}?ref=${BRANCH}`, {
+            const rawBlob = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}?ref=${BRANCH}`, {
                 method: 'GET'
             }, true);
+            
+            // 使用正确的 MIME 类型重新构造 Blob
+            const mimeType = getMimeType(ext);
+            const blob = new Blob([rawBlob], { type: mimeType });
             
             modalBody.innerHTML = ''; 
             

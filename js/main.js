@@ -1066,6 +1066,74 @@ function getMimeType(ext) {
     return mimeMap[ext] || 'application/octet-stream';
 }
 
+// PDF.js 纯前端渲染，避免 iframe PDF 下载和白屏异常
+async function renderPdfToCanvas(blob, container) {
+    container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px 0;">正在安全解密并渲染 PDF 页面...</div>';
+    
+    try {
+        const arrayBuffer = await blob.arrayBuffer();
+        
+        // 兼容不同的全局绑定
+        const pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
+        if (pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://fastly.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+            
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            container.innerHTML = ''; // 清空
+            
+            const pdfScrollContainer = document.createElement('div');
+            pdfScrollContainer.style.width = '100%';
+            pdfScrollContainer.style.height = '70vh';
+            pdfScrollContainer.style.overflowY = 'auto';
+            pdfScrollContainer.style.display = 'flex';
+            pdfScrollContainer.style.flexDirection = 'column';
+            pdfScrollContainer.style.gap = '15px';
+            pdfScrollContainer.style.alignItems = 'center';
+            
+            // 最多渲染前10页，防止文件过大导致内存崩塌
+            const maxPages = Math.min(pdf.numPages, 10);
+            for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.5 });
+                
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                canvas.style.maxWidth = '100%';
+                canvas.style.height = 'auto';
+                canvas.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+                canvas.style.borderRadius = '4px';
+                canvas.style.backgroundColor = '#ffffff';
+                
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                
+                pdfScrollContainer.appendChild(canvas);
+                await page.render(renderContext).promise;
+            }
+            
+            if (pdf.numPages > maxPages) {
+                const tip = document.createElement('div');
+                tip.style.color = 'var(--text-muted)';
+                tip.style.fontSize = '12px';
+                tip.style.padding = '10px 0';
+                tip.innerText = `-- 仅支持预览前 ${maxPages} 页，若要查看全部内容请直接下载 --`;
+                pdfScrollContainer.appendChild(tip);
+            }
+            
+            container.appendChild(pdfScrollContainer);
+        } else {
+            throw new Error("pdfjsLib is not loaded");
+        }
+    } catch (err) {
+        console.error("PDF.js Render Error:", err);
+        container.innerHTML = '<div style="text-align: center; color: var(--neon-red); padding: 20px 0;">PDF 渲染失败，不支持在此平台预览，建议点击右上角下载。</div>';
+    }
+}
+
 // 在线预览主入口
 async function previewFile(filePath, fileName) {
     showToast(`正在从安全云端加载预览 ${fileName}...`, "success");
@@ -1100,9 +1168,9 @@ async function previewFile(filePath, fileName) {
                 method: 'GET'
             }, true);
             
-            // 使用正确的 MIME 类型重新构造 Blob
+            // 使用 slice 更加原生、安全且无损地改变 Blob 的 MIME 类型
             const mimeType = getMimeType(ext);
-            const blob = new Blob([rawBlob], { type: mimeType });
+            const blob = rawBlob.slice(0, rawBlob.size, mimeType);
             
             modalBody.innerHTML = ''; 
             
@@ -1112,10 +1180,8 @@ async function previewFile(filePath, fileName) {
                 img.src = currentPreviewObjectURL;
                 modalBody.appendChild(img);
             } else if (isPdf) {
-                currentPreviewObjectURL = URL.createObjectURL(blob);
-                const iframe = document.createElement('iframe');
-                iframe.src = currentPreviewObjectURL;
-                modalBody.appendChild(iframe);
+                // 使用 PDF.js 在线渲染，完美解决 PDF 预览触发自动下载与白屏的问题
+                await renderPdfToCanvas(blob, modalBody);
             } else if (isAudio) {
                 currentPreviewObjectURL = URL.createObjectURL(blob);
                 const audio = document.createElement('audio');

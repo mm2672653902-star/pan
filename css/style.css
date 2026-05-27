@@ -515,3 +515,160 @@ body {
         text-align: center;
     }
 }
+
+/* ===== 在线预览弹窗 ===== */
+.preview-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 3, 6, 0.85);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.preview-modal-inner {
+    background: var(--bg-glass);
+    border: 1px solid var(--border-cyber);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 950px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), var(--glow-cyan);
+}
+
+.preview-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-cyber);
+    background: rgba(4, 4, 8, 0.5);
+}
+
+.preview-modal-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--neon-cyan);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+}
+
+.preview-modal-body {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.preview-modal-body img {
+    max-width: 100%;
+    max-height: 70vh;
+    border-radius: 4px;
+    object-fit: contain;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.preview-modal-body iframe {
+    width: 100%;
+    height: 70vh;
+    border: none;
+    background: #ffffff;
+    border-radius: 4px;
+}
+
+.preview-modal-body audio {
+    width: 100%;
+    max-width: 500px;
+}
+
+.preview-modal-body video {
+    max-width: 100%;
+    max-height: 70vh;
+    border-radius: 4px;
+    outline: none;
+}
+
+.preview-modal-body pre {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 20px;
+    border-radius: 6px;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-silver);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 70vh;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Markdown 预览样式 */
+.markdown-body {
+    width: 100%;
+    color: var(--text-silver);
+    font-size: 14px;
+    line-height: 1.6;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 8px;
+    text-align: left;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    color: var(--neon-cyan);
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+.markdown-body p {
+    margin-bottom: 12px;
+}
+.markdown-body ul, .markdown-body ol {
+    margin-bottom: 12px;
+    padding-left: 20px;
+}
+.markdown-body code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+.markdown-body pre code {
+    display: block;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 14px;
+    overflow-x: auto;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.preview-unsupported {
+    text-align: center;
+    color: var(--text-muted);
+}
+.preview-unsupported p {
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+/* ===== 搜索路径样式 ===== */
+.search-result-path {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-top: 2px;
+}
+

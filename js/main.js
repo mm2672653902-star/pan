@@ -64,6 +64,8 @@ let currentPath = ""; // Track current folder path
 let cachedFilesList = []; // Holds { name, path, sha, size, type } (files in current folder)
 let cachedFoldersList = []; // Holds folders in current folder
 let isStorageRepoPrivate = true; // Cached visibility of storage repo
+let currentPreviewFile = { path: "", name: "" };
+let currentPreviewObjectURL = null;
 
 // Convert Hex string to Uint8Array
 function hexToBytes(hex) {
@@ -259,6 +261,9 @@ async function verifyAndCreateStorageRepo() {
 
 // Fetch Files
 async function fetchFilesList() {
+    const localSearchInput = document.getElementById('local-search-input');
+    if (localSearchInput) localSearchInput.value = '';
+
     const container = document.getElementById('files-container-list');
     container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">正在读取文件列表...</div>';
     
@@ -324,7 +329,7 @@ function renderGoUpItem(container) {
 }
 
 // Render UI List
-function renderFilesList() {
+function renderFilesList(filterKeyword = "") {
     const container = document.getElementById('files-container-list');
     
     // Render Breadcrumbs
@@ -338,6 +343,8 @@ function renderFilesList() {
         rootSpan.style.color = currentPath === "" ? 'var(--neon-cyan)' : 'var(--text-silver)';
         rootSpan.addEventListener('click', () => {
             if (currentPath !== "") {
+                const localSearchInput = document.getElementById('local-search-input');
+                if (localSearchInput) localSearchInput.value = '';
                 currentPath = "";
                 fetchFilesList();
             }
@@ -362,6 +369,8 @@ function renderFilesList() {
                 span.style.color = index === parts.length - 1 ? 'var(--neon-cyan)' : 'var(--text-silver)';
                 span.addEventListener('click', () => {
                     if (currentPath !== thisPath) {
+                         const localSearchInput = document.getElementById('local-search-input');
+                         if (localSearchInput) localSearchInput.value = '';
                          currentPath = thisPath;
                          fetchFilesList();
                     }
@@ -371,8 +380,13 @@ function renderFilesList() {
         }
     }
     
+    // Filter
+    const kw = filterKeyword.trim().toLowerCase();
+    const foldersToRender = kw ? cachedFoldersList.filter(f => f.name.toLowerCase().includes(kw)) : cachedFoldersList;
+    const filesToRender = kw ? cachedFilesList.filter(f => f.name.toLowerCase().includes(kw)) : cachedFilesList;
+    
     // If folder is empty
-    if (cachedFoldersList.length === 0 && cachedFilesList.length === 0) {
+    if (foldersToRender.length === 0 && filesToRender.length === 0) {
         container.innerHTML = '';
         if (currentPath !== "") {
             renderGoUpItem(container);
@@ -382,7 +396,7 @@ function renderFilesList() {
         emptyMsg.style.textAlign = 'center';
         emptyMsg.style.color = 'var(--text-muted)';
         emptyMsg.style.padding = '40px 0';
-        emptyMsg.innerText = '网盘中暂无文件或文件夹。开始上传或新建文件夹吧！';
+        emptyMsg.innerText = kw ? '没有找到匹配的文件或文件夹。' : '网盘中暂无文件或文件夹。开始上传或新建文件夹吧！';
         container.appendChild(emptyMsg);
         return;
     }
@@ -395,7 +409,7 @@ function renderFilesList() {
     }
     
     // Render Folders
-    cachedFoldersList.forEach(folder => {
+    foldersToRender.forEach(folder => {
         const item = document.createElement('div');
         item.className = 'file-item';
         item.innerHTML = `
@@ -414,6 +428,8 @@ function renderFilesList() {
             </div>
         `;
         item.querySelector('.file-info').addEventListener('click', () => {
+            const localSearchInput = document.getElementById('local-search-input');
+            if (localSearchInput) localSearchInput.value = '';
             currentPath = folder.path;
             fetchFilesList();
         });
@@ -421,7 +437,7 @@ function renderFilesList() {
     });
     
     // Render Files
-    cachedFilesList.forEach(file => {
+    filesToRender.forEach(file => {
         const item = document.createElement('div');
         item.className = 'file-item';
         const icon = getFileIcon(file.name);
@@ -438,6 +454,7 @@ function renderFilesList() {
                 </div>
             </div>
             <div class="file-actions">
+                <button class="action-btn" onclick="previewFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')">预览</button>
                 <button class="action-btn" onclick="downloadFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')">下载</button>
                 <button class="action-btn" onclick="shareFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}')">复制分享</button>
                 <button class="action-btn btn-delete" onclick="deleteFile('${file.path.replace(/'/g, "\\'")}', '${file.name.replace(/'/g, "\\'")}', '${file.sha}')">删除</button>
@@ -891,4 +908,236 @@ function handleFilesUpload(files) {
     };
     
     reader.readAsArrayBuffer(file);
+}
+
+// 局部搜索入口
+function handleLocalSearch(keyword) {
+    renderFilesList(keyword);
+}
+
+// 打开全局搜索
+async function openGlobalSearch() {
+    const keyword = prompt("请输入全局搜索关键词（匹配文件名）：");
+    if (keyword === null) return; 
+    const cleanKeyword = keyword.trim();
+    if (!cleanKeyword) {
+        showToast("关键词不能为空", "error");
+        return;
+    }
+    
+    showToast("正在检索云端全部文件...", "success");
+    const container = document.getElementById('files-container-list');
+    container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">正在检索云端数据树...</div>';
+    
+    try {
+        const refData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/refs/heads/${BRANCH}`);
+        const commitSha = refData.object.sha;
+        
+        const treeData = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/git/trees/${commitSha}?recursive=true`);
+        
+        const kw = cleanKeyword.toLowerCase();
+        const results = treeData.tree.filter(item => {
+            if (item.type !== 'blob') return false;
+            const fileName = item.path.split('/').pop();
+            if (fileName === '.gitkeep') return false;
+            return fileName.toLowerCase().includes(kw);
+        });
+        
+        renderSearchResults(results, cleanKeyword);
+    } catch (err) {
+        console.error(err);
+        showToast("全局检索失败，请重试", "error");
+        fetchFilesList();
+    }
+}
+
+// 渲染全局搜索结果
+function renderSearchResults(results, keyword) {
+    const container = document.getElementById('files-container-list');
+    
+    const breadcrumbContainer = document.getElementById('breadcrumb-container');
+    if (breadcrumbContainer) {
+        breadcrumbContainer.innerHTML = '';
+        
+        const rootSpan = document.createElement('span');
+        rootSpan.innerHTML = '📁 返回根目录';
+        rootSpan.style.cursor = 'pointer';
+        rootSpan.style.color = 'var(--text-silver)';
+        rootSpan.addEventListener('click', () => {
+            currentPath = "";
+            fetchFilesList();
+        });
+        breadcrumbContainer.appendChild(rootSpan);
+        
+        const sep = document.createElement('span');
+        sep.innerText = ' / ';
+        sep.style.color = 'var(--text-muted)';
+        breadcrumbContainer.appendChild(sep);
+        
+        const searchSpan = document.createElement('span');
+        searchSpan.innerText = `🔍 全局搜索结果: "${keyword}" (${results.length} 项)`;
+        searchSpan.style.color = 'var(--neon-cyan)';
+        breadcrumbContainer.appendChild(searchSpan);
+    }
+    
+    if (results.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                未找到与 "${keyword}" 相关的匹配文件。
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = '';
+    
+    results.forEach(item => {
+        const fileName = item.path.split('/').pop();
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        const icon = getFileIcon(fileName);
+        const sizeStr = formatBytes(item.size || 0);
+        const displayPath = item.path;
+        
+        fileItem.innerHTML = `
+            <div class="file-info">
+                <div class="file-icon">${icon}</div>
+                <div class="file-meta">
+                    <div class="file-name" title="${fileName}">${fileName}</div>
+                    <div class="search-result-path" title="${displayPath}">${displayPath}</div>
+                </div>
+            </div>
+            <div class="file-actions">
+                <button class="action-btn" onclick="previewFile('${item.path.replace(/'/g, "\\'")}', '${fileName.replace(/'/g, "\\'")}')">预览</button>
+                <button class="action-btn" onclick="locateFile('${item.path.replace(/'/g, "\\'")}')">定位</button>
+                <button class="action-btn" onclick="downloadFile('${item.path.replace(/'/g, "\\'")}', '${fileName.replace(/'/g, "\\'")}')">下载</button>
+            </div>
+        `;
+        container.appendChild(fileItem);
+    });
+}
+
+// 定位文件所在目录
+async function locateFile(filePath) {
+    const parts = filePath.split('/');
+    parts.pop(); 
+    const parentPath = parts.join('/');
+    
+    currentPath = parentPath;
+    showToast("已成功定位到文件夹", "success");
+    fetchFilesList();
+}
+
+// 在线预览主入口
+async function previewFile(filePath, fileName) {
+    showToast(`正在从安全云端加载预览 ${fileName}...`, "success");
+    
+    try {
+        if (currentPreviewObjectURL) {
+            URL.revokeObjectURL(currentPreviewObjectURL);
+            currentPreviewObjectURL = null;
+        }
+        
+        currentPreviewFile = { path: filePath, name: fileName };
+        
+        const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+        const ext = fileName.split('.').pop().toLowerCase();
+        
+        const isImage = ["jpg", "jpeg", "png", "gif", "svg", "webp"].includes(ext);
+        const isPdf = ext === "pdf";
+        const isAudio = ["mp3", "wav", "ogg"].includes(ext);
+        const isVideo = ["mp4", "webm", "ogg", "mkv", "avi"].includes(ext);
+        const isText = ["txt", "md", "js", "css", "html", "py", "json", "c", "cpp", "h", "java", "go", "sh", "yaml", "yml", "ini", "sql"].includes(ext);
+        
+        const modal = document.getElementById('preview-modal');
+        const modalTitle = document.getElementById('preview-modal-title');
+        const modalBody = document.getElementById('preview-modal-body');
+        
+        modalTitle.innerText = fileName;
+        modalBody.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">正在加载内容...</div>';
+        modal.style.display = 'flex';
+        
+        if (isImage || isPdf || isAudio || isVideo || isText) {
+            const blob = await githubRequest(`/repos/${REPO_OWNER}/${STORAGE_REPO}/contents/${encodedPath}?ref=${BRANCH}`, {
+                method: 'GET'
+            }, true);
+            
+            modalBody.innerHTML = ''; 
+            
+            if (isImage) {
+                currentPreviewObjectURL = URL.createObjectURL(blob);
+                const img = document.createElement('img');
+                img.src = currentPreviewObjectURL;
+                modalBody.appendChild(img);
+            } else if (isPdf) {
+                currentPreviewObjectURL = URL.createObjectURL(blob);
+                const iframe = document.createElement('iframe');
+                iframe.src = currentPreviewObjectURL;
+                modalBody.appendChild(iframe);
+            } else if (isAudio) {
+                currentPreviewObjectURL = URL.createObjectURL(blob);
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = currentPreviewObjectURL;
+                modalBody.appendChild(audio);
+            } else if (isVideo) {
+                currentPreviewObjectURL = URL.createObjectURL(blob);
+                const video = document.createElement('video');
+                video.controls = true;
+                video.src = currentPreviewObjectURL;
+                modalBody.appendChild(video);
+            } else if (isText) {
+                const text = await blob.text();
+                if (ext === "md" && typeof marked !== "undefined") {
+                    const mdDiv = document.createElement('div');
+                    mdDiv.className = 'markdown-body';
+                    mdDiv.innerHTML = marked.parse(text);
+                    modalBody.appendChild(mdDiv);
+                } else {
+                    const pre = document.createElement('pre');
+                    const code = document.createElement('code');
+                    code.textContent = text;
+                    pre.appendChild(code);
+                    modalBody.appendChild(pre);
+                }
+            }
+        } else {
+            modalBody.innerHTML = `
+                <div class="preview-unsupported">
+                    <p>📂 该文件类型 (.${ext}) 暂不支持在线预览。</p>
+                    <button class="nav-btn" onclick="previewDownloadCurrent()">⬇ 直接下载文件</button>
+                </div>
+            `;
+        }
+    } catch (err) {
+        console.error(err);
+        showToast("加载预览失败，请重试", "error");
+        closePreview();
+    }
+}
+
+// 关闭预览弹窗
+function closePreview() {
+    const modal = document.getElementById('preview-modal');
+    if (modal) modal.style.display = 'none';
+    
+    if (currentPreviewObjectURL) {
+        URL.revokeObjectURL(currentPreviewObjectURL);
+        currentPreviewObjectURL = null;
+    }
+    currentPreviewFile = { path: "", name: "" };
+}
+
+// 点击背景关闭
+function closePreviewOnBackdrop(event) {
+    if (event.target.id === 'preview-modal') {
+        closePreview();
+    }
+}
+
+// 弹窗内直接下载
+function previewDownloadCurrent() {
+    if (currentPreviewFile.path && currentPreviewFile.name) {
+        downloadFile(currentPreviewFile.path, currentPreviewFile.name);
+    }
 }

@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800;900&family=Noto+Sans+SC:wght@300;400;700;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <!-- Stylesheet -->
     <link rel="stylesheet" href="css/style.css">
+    <script src="https://fastly.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
@@ -20,6 +21,22 @@
     
     <!-- Toasts Notifications -->
     <div id="toast-container" class="toast-container"></div>
+
+    <!-- ===== 在线预览弹窗 Modal ===== -->
+    <div id="preview-modal" class="preview-modal" style="display:none;" onclick="closePreviewOnBackdrop(event)">
+        <div class="preview-modal-inner">
+            <div class="preview-modal-header">
+                <div class="preview-modal-title" id="preview-modal-title">文件预览</div>
+                <div style="display:flex; gap:8px;">
+                    <button class="nav-btn" id="preview-download-btn" onclick="previewDownloadCurrent()">⬇ 下载</button>
+                    <button class="nav-btn btn-logout" onclick="closePreview()">✕ 关闭</button>
+                </div>
+            </div>
+            <div class="preview-modal-body" id="preview-modal-body">
+                <!-- 预览内容动态填入 -->
+            </div>
+        </div>
+    </div>
 
     <!-- Login Panel Screen -->
     <section id="login-screen">
@@ -82,13 +99,18 @@
                 <div class="file-list-header" style="flex-direction: column; align-items: flex-start; gap: 10px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                         <h2 class="file-list-title">云端文件库 (<span id="file-count">0</span>)</h2>
-                        <div>
-                            <button class="nav-btn" onclick="promptNewFolder()" style="border-color: var(--neon-green); color: var(--neon-green); margin-right: 8px;">➕ 新建文件夹</button>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="nav-btn" onclick="promptNewFolder()" style="border-color: var(--neon-green); color: var(--neon-green);">➕ 新建文件夹</button>
+                            <button class="nav-btn" id="global-search-btn" onclick="openGlobalSearch()" style="border-color: #a78bfa; color: #a78bfa;">🔍 全局搜索</button>
                             <button class="nav-btn" onclick="fetchFilesList()">🔄 刷新</button>
                         </div>
                     </div>
+                    <!-- 搜索框 (局部搜索) -->
+                    <div style="width:100%; position:relative;">
+                        <input type="text" id="local-search-input" class="form-input" placeholder="🔍 在当前文件夹中搜索文件名..." style="padding-left:14px; font-size:13px; height:38px;" oninput="handleLocalSearch(this.value)">
+                    </div>
                     <!-- Breadcrumbs navigation -->
-                    <div id="breadcrumb-container" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); padding-top: 4px;">
+                    <div id="breadcrumb-container" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); padding-top: 2px;">
                         <!-- Will be dynamically populated by JS -->
                     </div>
                 </div>
@@ -112,6 +134,6 @@
     </div>
 
     <!-- Main Controller JS -->
-    <script src="js/main.js?v=2.0"></script>
+    <script src="js/main.js?v=3.0"></script>
 </body>
 </html>
